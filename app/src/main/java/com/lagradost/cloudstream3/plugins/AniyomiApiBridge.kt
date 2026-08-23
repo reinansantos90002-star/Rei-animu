@@ -9,9 +9,11 @@ import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.ExtractorLink
 import com.lagradost.cloudstream3.Episode
+import com.lagradost.cloudstream3.Qualities
 import com.lagradost.cloudstream3.newAnimeSearchResponse
 import com.lagradost.cloudstream3.newAnimeLoadResponse
 import com.lagradost.cloudstream3.newEpisode
+import com.lagradost.cloudstream3.utils.Qualities as CloudStreamQualities
 import java.io.File
 
 class AniyomiApiBridge(
@@ -77,18 +79,13 @@ class AniyomiApiBridge(
         return results
     }
 
-    /**
-     * Extrai os detalhes do anime e monta a lista de episódios no CloudStream
-     */
     override suspend fun load(url: String): LoadResponse? {
         return try {
-            // 1. Criar um objeto SAnime fictício para passar para a extensão do Aniyomi
             val sAnimeClass = instance.javaClass.classLoader?.loadClass("eu.kanade.tachiyomi.animesource.model.SAnime")
                 ?: return null
             val sAnimeInstance = sAnimeClass.getMethod("create").invoke(null)
             sAnimeClass.getMethod("setUrl", String::class.java).invoke(sAnimeInstance, url)
 
-            // 2. Chama o método de buscar detalhes (animeDetailsParse ou fetchAnimeDetails)
             val detailsMethod = instance.javaClass.methods.firstOrNull { 
                 it.name == "fetchAnimeDetails" || it.name == "getAnimeDetails" 
             }
@@ -100,7 +97,6 @@ class AniyomiApiBridge(
             val posterUrl = sAnimeClass.getMethod("getThumbnail_url").invoke(sAnimeInstance) as? String ?: ""
             val description = sAnimeClass.getMethod("getDescription").invoke(sAnimeInstance) as? String ?: ""
 
-            // 3. Buscar a lista de episódios (fetchEpisodeList ou episodeListParse)
             val episodeListMethod = instance.javaClass.methods.firstOrNull { 
                 it.name == "fetchEpisodeList" || it.name == "getEpisodeList" 
             }
@@ -108,7 +104,6 @@ class AniyomiApiBridge(
 
             val episodeList = mutableListOf<Episode>()
 
-            // 4. Mapear cada SEpisode para o modelo Episode do CloudStream
             for (ep in episodesRaw) {
                 if (ep == null) continue
                 val epUrl = ep.javaClass.getMethod("getUrl").invoke(ep) as? String ?: continue
@@ -122,7 +117,6 @@ class AniyomiApiBridge(
                 episodeList.add(episode)
             }
 
-            // Inverte a lista se os episódios vierem do mais recente para o mais antigo
             newAnimeLoadResponse(title, url, TvType.Anime) {
                 this.posterUrl = posterUrl
                 this.plot = description
@@ -134,13 +128,59 @@ class AniyomiApiBridge(
         }
     }
 
+    /**
+     * Puxa os links de mídia (.mp4, .m3u8) da extensão Aniyomi e injeta no player
+     */
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         offsetCallback: (ExtractorLink) -> Unit
     ): Boolean {
-        return false
+        try {
+            // 1. Instanciar um SEpisode com a URL recebida
+            val sEpisodeClass = instance.javaClass.classLoader?.loadClass("eu.kanade.tachiyomi.animesource.model.SEpisode")
+                ?: return false
+            val sEpisodeInstance = sEpisodeClass.getMethod("create").invoke(null)
+            sEpisodeClass.getMethod("setUrl", String::class.java).invoke(sEpisodeInstance, data)
+
+            // 2. Chamar o método de buscar vídeos da extensão (getVideoList ou fetchVideoList)
+            val videoListMethod = instance.javaClass.methods.firstOrNull { 
+                it.name == "fetchVideoList" || it.name == "getVideoList" 
+            } ?: return false
+
+            val videoList = videoListMethod.invoke(instance, sEpisodeInstance) as? List<*> ?: return false
+
+            // 3. Mapear cada Video do Aniyomi para ExtractorLink do CloudStream
+            for (video in videoList) {
+                if (video == null) continue
+
+                val videoUrl = try { video.javaClass.getMethod("getVideoUrl").invoke(video) as? String } catch (e: Exception) { null }
+                    ?: try { video.javaClass.getMethod("getUrl").invoke(video) as? String } catch (e: Exception) { null }
+                    ?: continue
+
+                val qualityStr = try { video.javaClass.getMethod("getQuality").invoke(video) as? String } catch (e: Exception) { "720p" }
+
+                // Define se o link é HLS (.m3u8) ou stream direto
+                val isM3u8 = videoUrl.contains(".m3u8")
+
+                val link = ExtractorLink(
+                    source = name,
+                    name = "$name - $qualityStr",
+                    url = videoUrl,
+                    referer = mainUrl,
+                    quality = CloudStreamQualities.Unknown.value,
+                    isM3u8 = isM3u8
+                )
+
+                // Devolve o link direto para o CloudStream tocar
+                offsetCallback(link)
+            }
+            return true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        }
     }
 }
 
