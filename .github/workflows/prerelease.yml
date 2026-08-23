@@ -1,12 +1,8 @@
-Name: Pre-release
+name: Pre-release
 
 on:
   push:
     branches: [ master ]
-    paths-ignore:
-      - '*.md'
-      - '*.json'
-      - '**/wcokey.txt'
 
 concurrency:
   group: "pre-release"
