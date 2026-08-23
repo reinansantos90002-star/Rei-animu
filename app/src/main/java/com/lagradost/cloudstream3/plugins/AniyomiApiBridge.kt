@@ -8,7 +8,6 @@ import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.ExtractorLink
-import com.lagradost.cloudstream3.newAnimeSearchResponse
 import java.io.File
 
 class AniyomiApiBridge(
@@ -29,7 +28,8 @@ class AniyomiApiBridge(
     }
 
     override var mainUrl: String = try {
-        instance.javaClass.getMethod("getBasesUrl").invoke(instance) as String
+        instance.javaClass.getMethod("getBasesUrl").invoke(instance) as? String 
+            ?: instance.javaClass.getMethod("baseUrl").invoke(instance) as String
     } catch (e: Exception) {
         ""
     }
@@ -40,20 +40,19 @@ class AniyomiApiBridge(
     /**
      * Busca na página principal (Catálogo/Lançamentos)
      */
-    override async fun getMainPage(page: Int, request: MainPageRequest): HomePageList? {
-        // Chamaremos a lógica de extração da lista aqui
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageList? {
         return null
     }
 
     /**
      * Busca por texto
      */
-    override async fun search(query: String): List<SearchResponse> {
+    override suspend fun search(query: String): List<SearchResponse> {
         val results = mutableListOf<SearchResponse>()
         try {
-            // Invoca o método de busca da extensão Aniyomi por reflexão
-            val searchMethod = instance.javaClass.methods.firstOrNull { it.name == "searchAnimeRequest" || it.name == "fetchSearchAnime" }
-            // Mapeamento dos resultados virá no Módulo 3
+            val searchMethod = instance.javaClass.methods.firstOrNull { 
+                it.name == "searchAnimeRequest" || it.name == "fetchSearchAnime" 
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -63,21 +62,19 @@ class AniyomiApiBridge(
     /**
      * Carrega detalhes do anime e lista de episódios
      */
-    override async fun load(url: String): LoadResponse? {
-        // Mapeamento dos detalhes e episódios
+    override suspend fun load(url: String): LoadResponse? {
         return null
     }
 
     /**
      * Extrai os links do player de vídeo (MP4, HLS/M3U8)
      */
-    override async fun loadLinks(
+    override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         offsetCallback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Extração dos streams de vídeo
         return false
     }
 }
