@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.ExtractorLink
+import com.lagradost.cloudstream3.newAnimeSearchResponse
 import java.io.File
 
 class AniyomiApiBridge(
@@ -16,11 +17,9 @@ class AniyomiApiBridge(
     loader: AniyomiApkLoader
 ) : MainAPI() {
 
-    // Instância real do AnimeHttpSource da extensão Aniyomi
     private val instance: Any = loader.loadExtensionClass(apkFile, mainClassName)
         ?: throw IllegalStateException("Falha ao instanciar a classe da extensão: $mainClassName")
 
-    // Define nome e propriedades base da API pegando via reflexão da extensão
     override var name: String = try {
         instance.javaClass.getMethod("getName").invoke(instance) as String
     } catch (e: Exception) {
@@ -37,21 +36,44 @@ class AniyomiApiBridge(
     override val supportedTypes = setOf(TvType.Anime)
     override var hasMainPage = true
 
-    /**
-     * Busca na página principal (Catálogo/Lançamentos)
-     */
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageList? {
         return null
     }
 
     /**
-     * Busca por texto
+     * Mapeia a busca do Aniyomi para os modelos nativos do CloudStream
      */
     override suspend fun search(query: String): List<SearchResponse> {
         val results = mutableListOf<SearchResponse>()
         try {
+            // Busca o método de pesquisa da extensão (Aniyomi usa fetchSearchAnime ou searchAnimeParse)
             val searchMethod = instance.javaClass.methods.firstOrNull { 
-                it.name == "searchAnimeRequest" || it.name == "fetchSearchAnime" 
+                it.name == "searchAnimeParse" || it.name == "fetchSearchAnime" 
+            } ?: return emptyList()
+
+            // Invoca a busca por reflexão
+            val response = searchMethod.invoke(instance, query, 1, emptyList<Any>())
+            
+            // Extrai a lista de animes (AnimesPage.animes)
+            val animesList = try {
+                val getAnimesMethod = response.javaClass.getMethod("getAnimes")
+                getAnimesMethod.invoke(response) as? List<*>
+            } catch (e: Exception) {
+                response as? List<*>
+            } ?: return emptyList()
+
+            // Converte cada SAnime do Aniyomi para um SearchResponse do CloudStream
+            for (anime in animesList) {
+                if (anime == null) continue
+                
+                val title = anime.javaClass.getMethod("getTitle").invoke(anime) as? String ?: ""
+                val url = anime.javaClass.getMethod("getUrl").invoke(anime) as? String ?: ""
+                val thumbnailUrl = anime.javaClass.getMethod("getThumbnail_url").invoke(anime) as? String ?: ""
+
+                val searchResponse = newAnimeSearchResponse(title, url) {
+                    this.posterUrl = thumbnailUrl
+                }
+                results.add(searchResponse)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -59,16 +81,10 @@ class AniyomiApiBridge(
         return results
     }
 
-    /**
-     * Carrega detalhes do anime e lista de episódios
-     */
     override suspend fun load(url: String): LoadResponse? {
         return null
     }
 
-    /**
-     * Extrai os links do player de vídeo (MP4, HLS/M3U8)
-     */
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
