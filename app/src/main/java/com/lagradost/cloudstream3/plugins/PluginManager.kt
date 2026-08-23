@@ -850,5 +850,43 @@ object PluginManager {
             return null
         }
     }
+
+    /**
+     * Carrega um APK de extensão do Aniyomi diretamente a partir de um arquivo local
+     */
+    fun loadAniyomiPlugin(context: Context, apkFile: File): Boolean {
+        return try {
+            val loader = AniyomiApkLoader(context)
+            val mainClass = loader.getMainClassName(apkFile) ?: return false
+
+            val apiBridge = AniyomiApiBridge(apkFile, mainClass, loader)
+            
+            // Injeta a API convertida no registrador global do CloudStream
+            APIHolder.addPlugin(apiBridge)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * Processa uma URL de repositório Aniyomi, baixa os APKs e os registra no app
+     */
+    suspend fun loadAniyomiRepository(context: Context, repoUrl: String) {
+        try {
+            val extensions = AniyomiRepoParser.fetchAniyomiRepository(repoUrl)
+            val cleanBaseUrl = repoUrl.removeSuffix("index.json").trimEnd('/')
+
+            for (ext in extensions) {
+                val apkFile = AniyomiRepoParser.downloadExtensionApk(context, cleanBaseUrl, ext.apk)
+                if (apkFile != null && apkFile.exists()) {
+                    loadAniyomiPlugin(context, apkFile)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }
 
