@@ -1,18 +1,17 @@
 package com.lagradost.cloudstream3.plugins
 
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.MainAPI
-import com.lagradost.cloudstream3.SearchResponse
-import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.MainPageRequest
+import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.MainPageRequest
+import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.Episode
-import com.lagradost.cloudstream3.Qualities
-import com.lagradost.cloudstream3.newAnimeSearchResponse
+import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.newAnimeLoadResponse
+import com.lagradost.cloudstream3.newAnimeSearchResponse
 import com.lagradost.cloudstream3.newEpisode
+import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities as CloudStreamQualities
 import java.io.File
 
@@ -49,14 +48,18 @@ class AniyomiApiBridge(
         val results = mutableListOf<SearchResponse>()
         try {
             val searchMethod = instance.javaClass.methods.firstOrNull { 
-                it.name == "searchAnimeParse" || it.name == "fetchSearchAnime" 
+                it.name == "searchAnimeParse" || it.name == "fetchSearchAnime" || it.name.contains("searchAnime")
             } ?: return emptyList()
 
-            val response = searchMethod.invoke(instance, query, 1, emptyList<Any>())
-            
+            val response = try {
+                searchMethod.invoke(instance, query, 1, emptyList<Any>())
+            } catch (e: Exception) {
+                searchMethod.invoke(instance, 1, query, null)
+            }
+
             val animesList = try {
-                val getAnimesMethod = response.javaClass.getMethod("getAnimes")
-                getAnimesMethod.invoke(response) as? List<*>
+                val getAnimesMethod = response?.javaClass?.getMethod("getAnimes")
+                getAnimesMethod?.invoke(response) as? List<*>
             } catch (e: Exception) {
                 response as? List<*>
             } ?: return emptyList()
@@ -64,9 +67,9 @@ class AniyomiApiBridge(
             for (anime in animesList) {
                 if (anime == null) continue
                 
-                val title = anime.javaClass.getMethod("getTitle").invoke(anime) as? String ?: ""
-                val url = anime.javaClass.getMethod("getUrl").invoke(anime) as? String ?: ""
-                val thumbnailUrl = anime.javaClass.getMethod("getThumbnail_url").invoke(anime) as? String ?: ""
+                val title = try { anime.javaClass.getMethod("getTitle").invoke(anime) as? String } catch (e: Exception) { null } ?: ""
+                val url = try { anime.javaClass.getMethod("getUrl").invoke(anime) as? String } catch (e: Exception) { null } ?: ""
+                val thumbnailUrl = try { anime.javaClass.getMethod("getThumbnail_url").invoke(anime) as? String } catch (e: Exception) { null } ?: ""
 
                 val searchResponse = newAnimeSearchResponse(title, url) {
                     this.posterUrl = thumbnailUrl
@@ -82,33 +85,35 @@ class AniyomiApiBridge(
     override suspend fun load(url: String): LoadResponse? {
         return try {
             val sAnimeClass = instance.javaClass.classLoader?.loadClass("eu.kanade.tachiyomi.animesource.model.SAnime")
-                ?: return null
-            val sAnimeInstance = sAnimeClass.getMethod("create").invoke(null)
-            sAnimeClass.getMethod("setUrl", String::class.java).invoke(sAnimeInstance, url)
+            val sAnimeInstance = sAnimeClass?.getMethod("create")?.invoke(null)
+            if (sAnimeInstance != null && sAnimeClass != null) {
+                sAnimeClass.getMethod("setUrl", String::class.java).invoke(sAnimeInstance, url)
+            }
 
             val detailsMethod = instance.javaClass.methods.firstOrNull { 
-                it.name == "fetchAnimeDetails" || it.name == "getAnimeDetails" 
+                it.name == "fetchAnimeDetails" || it.name == "getAnimeDetails" || it.name.contains("animeDetails")
             }
-            if (detailsMethod != null) {
+            if (detailsMethod != null && sAnimeInstance != null) {
                 detailsMethod.invoke(instance, sAnimeInstance)
             }
 
-            val title = sAnimeClass.getMethod("getTitle").invoke(sAnimeInstance) as? String ?: "Anime"
-            val posterUrl = sAnimeClass.getMethod("getThumbnail_url").invoke(sAnimeInstance) as? String ?: ""
-            val description = sAnimeClass.getMethod("getDescription").invoke(sAnimeInstance) as? String ?: ""
+            val targetObj = sAnimeInstance ?: url
+            val title = try { targetObj.javaClass.getMethod("getTitle").invoke(targetObj) as? String } catch (e: Exception) { null } ?: "Anime"
+            val posterUrl = try { targetObj.javaClass.getMethod("getThumbnail_url").invoke(targetObj) as? String } catch (e: Exception) { null } ?: ""
+            val description = try { targetObj.javaClass.getMethod("getDescription").invoke(targetObj) as? String } catch (e: Exception) { null } ?: ""
 
             val episodeListMethod = instance.javaClass.methods.firstOrNull { 
-                it.name == "fetchEpisodeList" || it.name == "getEpisodeList" 
+                it.name == "fetchEpisodeList" || it.name == "getEpisodeList" || it.name.contains("episodeList")
             }
-            val episodesRaw = episodeListMethod?.invoke(instance, sAnimeInstance) as? List<*> ?: emptyList<Any>()
+            val episodesRaw = episodeListMethod?.invoke(instance, targetObj) as? List<*> ?: emptyList<Any>()
 
             val episodeList = mutableListOf<Episode>()
 
             for (ep in episodesRaw) {
                 if (ep == null) continue
-                val epUrl = ep.javaClass.getMethod("getUrl").invoke(ep) as? String ?: continue
-                val epName = ep.javaClass.getMethod("getName").invoke(ep) as? String ?: "Episódio"
-                val epNumber = ep.javaClass.getMethod("getEpisode_number").invoke(ep) as? Float ?: 0f
+                val epUrl = try { ep.javaClass.getMethod("getUrl").invoke(ep) as? String } catch (e: Exception) { null } ?: continue
+                val epName = try { ep.javaClass.getMethod("getName").invoke(ep) as? String } catch (e: Exception) { null } ?: "Episódio"
+                val epNumber = try { ep.javaClass.getMethod("getEpisode_number").invoke(ep) as? Float } catch (e: Exception) { null } ?: 0f
 
                 val episode = newEpisode(epUrl) {
                     this.name = epName
@@ -128,9 +133,6 @@ class AniyomiApiBridge(
         }
     }
 
-    /**
-     * Puxa os links de mídia (.mp4, .m3u8) da extensão Aniyomi e injeta no player
-     */
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -138,20 +140,19 @@ class AniyomiApiBridge(
         offsetCallback: (ExtractorLink) -> Unit
     ): Boolean {
         try {
-            // 1. Instanciar um SEpisode com a URL recebida
             val sEpisodeClass = instance.javaClass.classLoader?.loadClass("eu.kanade.tachiyomi.animesource.model.SEpisode")
-                ?: return false
-            val sEpisodeInstance = sEpisodeClass.getMethod("create").invoke(null)
-            sEpisodeClass.getMethod("setUrl", String::class.java).invoke(sEpisodeInstance, data)
+            val sEpisodeInstance = sEpisodeClass?.getMethod("create")?.invoke(null)
+            if (sEpisodeInstance != null && sEpisodeClass != null) {
+                sEpisodeClass.getMethod("setUrl", String::class.java).invoke(sEpisodeInstance, data)
+            }
 
-            // 2. Chamar o método de buscar vídeos da extensão (getVideoList ou fetchVideoList)
             val videoListMethod = instance.javaClass.methods.firstOrNull { 
-                it.name == "fetchVideoList" || it.name == "getVideoList" 
+                it.name == "fetchVideoList" || it.name == "getVideoList" || it.name.contains("videoList")
             } ?: return false
 
-            val videoList = videoListMethod.invoke(instance, sEpisodeInstance) as? List<*> ?: return false
+            val targetArg = sEpisodeInstance ?: data
+            val videoList = videoListMethod.invoke(instance, targetArg) as? List<*> ?: return false
 
-            // 3. Mapear cada Video do Aniyomi para ExtractorLink do CloudStream
             for (video in videoList) {
                 if (video == null) continue
 
@@ -160,8 +161,6 @@ class AniyomiApiBridge(
                     ?: continue
 
                 val qualityStr = try { video.javaClass.getMethod("getQuality").invoke(video) as? String } catch (e: Exception) { "720p" }
-
-                // Define se o link é HLS (.m3u8) ou stream direto
                 val isM3u8 = videoUrl.contains(".m3u8")
 
                 val link = ExtractorLink(
@@ -173,7 +172,6 @@ class AniyomiApiBridge(
                     isM3u8 = isM3u8
                 )
 
-                // Devolve o link direto para o CloudStream tocar
                 offsetCallback(link)
             }
             return true
