@@ -24,6 +24,14 @@ class AniyomiApiBridge(
     private val instance: Any = loader.loadExtensionClass(apkFile, mainClassName)
         ?: throw IllegalStateException("Falha ao instanciar a classe da extensão: $mainClassName")
 
+    // Checa se a extensão do Aniyomi possui a flag NSFW/Adulto habilitada
+    private val isNsfwExtension: Boolean = try {
+        val method = instance.javaClass.methods.firstOrNull { it.name == "isNsfw" || it.name == "getIsNsfw" }
+        (method?.invoke(instance) as? Boolean) ?: false
+    } catch (e: Exception) {
+        false
+    }
+
     override var name: String = try {
         instance.javaClass.getMethod("getName").invoke(instance) as String
     } catch (e: Exception) {
@@ -37,7 +45,8 @@ class AniyomiApiBridge(
         ""
     }
 
-    override val supportedTypes = setOf(TvType.Anime)
+    // Se for NSFW, categoriza como TvType.NSFW para o CloudStream aplicar os filtros
+    override val supportedTypes = if (isNsfwExtension) setOf(TvType.NSFW) else setOf(TvType.Anime)
     override var hasMainPage = true
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageList? {
@@ -64,6 +73,8 @@ class AniyomiApiBridge(
                 response as? List<*>
             } ?: return emptyList()
 
+            val currentType = if (isNsfwExtension) TvType.NSFW else TvType.Anime
+
             for (anime in animesList) {
                 if (anime == null) continue
                 
@@ -71,7 +82,7 @@ class AniyomiApiBridge(
                 val url = try { anime.javaClass.getMethod("getUrl").invoke(anime) as? String } catch (e: Exception) { null } ?: ""
                 val thumbnailUrl = try { anime.javaClass.getMethod("getThumbnail_url").invoke(anime) as? String } catch (e: Exception) { null } ?: ""
 
-                val searchResponse = newAnimeSearchResponse(title, url) {
+                val searchResponse = newAnimeSearchResponse(title, url, currentType) {
                     this.posterUrl = thumbnailUrl
                 }
                 results.add(searchResponse)
@@ -122,7 +133,9 @@ class AniyomiApiBridge(
                 episodeList.add(episode)
             }
 
-            newAnimeLoadResponse(title, url, TvType.Anime) {
+            val currentType = if (isNsfwExtension) TvType.NSFW else TvType.Anime
+
+            newAnimeLoadResponse(title, url, currentType) {
                 this.posterUrl = posterUrl
                 this.plot = description
                 this.episodes = episodeList.reversed()
