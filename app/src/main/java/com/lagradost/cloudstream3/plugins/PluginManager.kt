@@ -99,29 +99,21 @@ data class PluginData(
             null,
             null,
             File(this.filePath).length(),
-            // No file hash for local plugins. Local plugins have no use for the hash, and it's expensive to compute.
             null
         )
     }
 }
 
-// This is used as a placeholder / not set version
 const val PLUGIN_VERSION_NOT_SET = Int.MIN_VALUE
-
-// This always updates
 const val PLUGIN_VERSION_ALWAYS_UPDATE = -1
 
 object PluginManager {
-    // Prevent multiple writes at once
     val lock = Mutex()
 
     const val TAG = "PluginManager"
 
     private var hasCreatedNotChanel = false
 
-    /**
-     * Store data about the plugin for fetching later
-     * */
     private suspend fun setPluginData(data: PluginData) {
         lock.withLock {
             if (data.isOnline) {
@@ -161,10 +153,6 @@ object PluginManager {
         }
     }
 
-    /**
-     * Deletes all generated oat files which will force Android to recompile the dex extensions.
-     * This might fix unrecoverable SIGSEGV exceptions when old oat files are loaded in a new app update.
-     */
     fun deleteAllOatFiles(context: Context) {
         File("${context.filesDir}/${ONLINE_PLUGINS_FOLDER}").listFiles()?.forEach { repo ->
             repo.listFiles { file -> file.name == "oat" && file.isDirectory }?.forEach { file ->
@@ -173,7 +161,6 @@ object PluginManager {
             }
         }
     }
-
 
     fun getPluginsOnline(): Array<PluginData> {
         return getKey<Array<PluginData>>(PLUGINS_KEY) ?: emptyArray()
@@ -190,11 +177,9 @@ object PluginManager {
 
     var currentlyLoading: String? = null
 
-    // Maps filepath to plugin
     val plugins: MutableMap<String, BasePlugin> =
         LinkedHashMap<String, BasePlugin>()
 
-    // Maps urls to plugin
     val urlPlugins: MutableMap<String, BasePlugin> =
         LinkedHashMap<String, BasePlugin>()
 
@@ -216,7 +201,6 @@ object PluginManager {
                 PluginData(name, null, false, file.absolutePath, PLUGIN_VERSION_NOT_SET)
             )
         } else if (file.extension == "apk") {
-            // Suporte para extensões do Aniyomi/Animiru (.apk)
             loadAniyomiApkPlugin(context, file)
         } else {
             Log.i(TAG, "Skipping invalid plugin file: $file")
@@ -224,25 +208,28 @@ object PluginManager {
     }
 
     /**
-     * Carrega extensões no formato .apk (Aniyomi) via AniyomiApiBridge
+     * Carrega extensões no formato .apk (Aniyomi) lendo a classe principal dinamicamente
      */
     private fun loadAniyomiApkPlugin(context: Context, file: File) {
         try {
             Log.i(TAG, "Tentando carregar extensão Aniyomi APK: ${file.name}")
             val apkLoader = AniyomiApkLoader(context)
             
-            // Exemplo genérico/dinâmico de carregamento da classe principal
-            val mainClass = "eu.kanade.tachiyomi.animeextension.pt.smartanimes.SmartAnimes"
+            val mainClass = apkLoader.getMainClassName(file)
+            if (mainClass == null) {
+                Log.e(TAG, "Classe principal não encontrada no manifesto do APK: ${file.name}")
+                return
+            }
+
             val apiBridge = AniyomiApiBridge(file, mainClass, apkLoader)
 
             APIHolder.allProviders.add(apiBridge)
-            Log.i(TAG, "Sucesso ao carregar extensão Aniyomi: ${apiBridge.name}")
+            Log.i(TAG, "Sucesso ao carregar extensão Aniyomi: ${apiBridge.name} ($mainClass)")
         } catch (e: Throwable) {
             Log.e(TAG, "Falha ao carregar APK do Aniyomi: ${file.name}", e)
         }
     }
 
-    // Helper class for updateAllOnlinePluginsAndLoadThem
     data class OnlinePluginData(
         val savedData: PluginData,
         val onlineData: PluginWrapper,
