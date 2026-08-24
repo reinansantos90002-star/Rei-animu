@@ -23,14 +23,22 @@ class AniyomiApkLoader(private val context: Context) {
                 val entry = zip.getEntry("AndroidManifest.xml") ?: return null
                 zip.getInputStream(entry).use { inputStream ->
                     val bytes = inputStream.readBytes()
-                    val xmlText = String(bytes, Charsets.UTF_8)
-
-                    val classMatch = Regex("""eu\.kanade\.tachiyomi\.extension\.[a-zA-Z0-9_.]*""").find(xmlText)
-                    classMatch?.value
+                    extractExtensionClassName(bytes)
                 }
             }
         } catch (e: Exception) {
-            Log.e("AniyomiApkLoader", "Erro ao extrair nome da classe do APK", e)
+            Log.e("AniyomiApkLoader", "Erro ao extrair nome da classe do APK: ${apkFile.name}", e)
+            null
+        }
+    }
+
+    private fun extractExtensionClassName(manifestBytes: ByteArray): String? {
+        return try {
+            val content = String(manifestBytes, Charsets.ISO_8859_1)
+            val regex = Regex("""eu\.kanade\.tachiyomi\.extension\.[a-zA-Z0-9_.]*""")
+            val match = regex.find(content)
+            match?.value
+        } catch (e: Exception) {
             null
         }
     }
