@@ -36,7 +36,6 @@ import com.lagradost.cloudstream3.PROVIDER_STATUS_DOWN
 import com.lagradost.cloudstream3.PROVIDER_STATUS_OK
 import com.lagradost.cloudstream3.R
 import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.actions.VideoClickAction
 import com.lagradost.cloudstream3.actions.VideoClickActionHolder
 import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.mvvm.debugPrint
@@ -46,13 +45,11 @@ import com.lagradost.cloudstream3.plugins.RepositoryManager.ONLINE_PLUGINS_FOLDE
 import com.lagradost.cloudstream3.plugins.RepositoryManager.PREBUILT_REPOSITORIES
 import com.lagradost.cloudstream3.plugins.RepositoryManager.downloadPluginToFile
 import com.lagradost.cloudstream3.plugins.RepositoryManager.getRepoPlugins
-import com.lagradost.cloudstream3.plugins.RepositoryManager.sha256
 import com.lagradost.cloudstream3.ui.settings.extensions.REPOSITORIES_KEY
 import com.lagradost.cloudstream3.ui.settings.extensions.RepositoryData
 import com.lagradost.cloudstream3.utils.AppContextUtils.getApiProviderLangSettings
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.Coroutines.main
-import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.UIHelper.colorFromAttribute
 import com.lagradost.cloudstream3.utils.UiText
 import com.lagradost.cloudstream3.utils.downloader.DownloadFileManagement.sanitizeFilename
@@ -205,23 +202,25 @@ object PluginManager {
         }
     }
 
-    private fun loadAniyomiApkPlugin(context: Context, file: File) {
-        try {
+    fun loadAniyomiApkPlugin(context: Context, file: File): Boolean {
+        return try {
             Log.i(TAG, "Tentando carregar extensão Aniyomi APK: ${file.name}")
             val apkLoader = AniyomiApkLoader(context)
             
             val mainClass = apkLoader.getMainClassName(file)
             if (mainClass == null) {
                 Log.e(TAG, "Classe principal não encontrada no manifesto do APK: ${file.name}")
-                return
+                return false
             }
 
             val apiBridge = AniyomiApiBridge(file, mainClass, apkLoader)
 
-            APIHolder.allProviders.add(apiBridge)
+            APIHolder.apis.add(apiBridge)
             Log.i(TAG, "Sucesso ao carregar extensão Aniyomi: ${apiBridge.name} ($mainClass)")
+            true
         } catch (e: Throwable) {
             Log.e(TAG, "Falha ao carregar APK do Aniyomi: ${file.name}", e)
+            false
         }
     }
 
@@ -606,7 +605,7 @@ object PluginManager {
             removePluginMapping(it)
         }
 
-        APIHolder.allProviders.removeIf { provider -> provider.sourcePlugin == plugin.filename }
+        APIHolder.apis.removeIf { provider -> provider.sourcePlugin == plugin.filename }
 
         extractorApis.withLock {
             extractorApis.removeAll { provider -> provider.sourcePlugin == plugin.filename }
@@ -841,21 +840,6 @@ object PluginManager {
         } catch (e: Exception) {
             logError(e)
             return null
-        }
-    }
-
-    fun loadAniyomiPlugin(context: Context, apkFile: File): Boolean {
-        return try {
-            val loader = AniyomiApkLoader(context)
-            val mainClass = loader.getMainClassName(apkFile) ?: return false
-
-            val apiBridge = AniyomiApiBridge(apkFile, mainClass, loader)
-            
-            APIHolder.allProviders.add(apiBridge)
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
         }
     }
 
