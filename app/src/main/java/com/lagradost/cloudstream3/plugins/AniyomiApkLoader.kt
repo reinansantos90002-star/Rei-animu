@@ -5,7 +5,6 @@ import android.util.Log
 import dalvik.system.PathClassLoader
 import java.io.File
 import java.util.zip.ZipFile
-import org.json.JSONObject
 
 class AniyomiApkLoader(private val context: Context) {
 
@@ -14,8 +13,7 @@ class AniyomiApkLoader(private val context: Context) {
     fun getClassLoader(apkFile: File): PathClassLoader {
         val path = apkFile.absolutePath
         return classLoaderCache.getOrPut(path) {
-            val optimizedDir = context.codeCacheDir
-            PathClassLoader(path, optimizedDir.absolutePath, null, context.classLoader)
+            PathClassLoader(path, context.classLoader)
         }
     }
 
