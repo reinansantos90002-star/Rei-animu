@@ -21,37 +21,23 @@ class AniyomiApiBridge(
     loader: AniyomiApkLoader
 ) : MainAPI() {
 
-    private val instance: Any = loader.loadExtensionClass(apkFile, mainClassName)
-        ?: throw IllegalStateException("Falha ao instanciar a classe da extensão: $mainClassName")
-
-    private val isNsfwExtension: Boolean = try {
-        val method = instance.javaClass.methods.firstOrNull { it.name == "isNsfw" || it.name == "getIsNsfw" }
-        (method?.invoke(instance) as? Boolean) ?: false
+    private val instance: Any? = try {
+        loader.loadExtensionClass(apkFile, mainClassName)
     } catch (e: Exception) {
-        false
+        null
     }
 
-    override var name: String = try {
-        (instance.javaClass.getMethod("getName").invoke(instance) as? String) ?: "Aniyomi Extension"
-    } catch (e: Exception) {
-        "Aniyomi Extension"
-    }
-
-    override var mainUrl: String = try {
-        val url = instance.javaClass.methods.firstOrNull { it.name == "getBasesUrl" || it.name == "baseUrl" }?.invoke(instance) as? String
-        url ?: "https://aniyomi.org"
-    } catch (e: Exception) {
-        "https://aniyomi.org"
-    }
-
-    override var supportedTypes = if (isNsfwExtension) setOf(TvType.NSFW) else setOf(TvType.Anime)
-    override var hasMainPage = true
+    override var name: String = apkFile.nameWithoutExtension
+    override var mainUrl: String = "https://aniyomi.org"
+    override var supportedTypes: Set<TvType> = setOf(TvType.Anime)
+    override var hasMainPage: Boolean = false
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageList? {
         return null
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
+        if (instance == null) return emptyList()
         val results = mutableListOf<SearchResponse>()
         try {
             val searchMethod = instance.javaClass.methods.firstOrNull { 
@@ -71,16 +57,13 @@ class AniyomiApiBridge(
                 response as? List<*>
             } ?: return emptyList()
 
-            val currentType = if (isNsfwExtension) TvType.NSFW else TvType.Anime
-
             for (anime in animesList) {
                 if (anime == null) continue
-                
                 val title = try { anime.javaClass.getMethod("getTitle").invoke(anime) as? String } catch (e: Exception) { null } ?: ""
                 val url = try { anime.javaClass.getMethod("getUrl").invoke(anime) as? String } catch (e: Exception) { null } ?: ""
                 val thumbnailUrl = try { anime.javaClass.getMethod("getThumbnail_url").invoke(anime) as? String } catch (e: Exception) { null } ?: ""
 
-                val searchResponse = newAnimeSearchResponse(title, url, currentType) {
+                val searchResponse = newAnimeSearchResponse(title, url, TvType.Anime) {
                     this.posterUrl = thumbnailUrl
                 }
                 results.add(searchResponse)
@@ -92,6 +75,7 @@ class AniyomiApiBridge(
     }
 
     override suspend fun load(url: String): LoadResponse? {
+        if (instance == null) return null
         return try {
             val sAnimeClass = instance.javaClass.classLoader?.loadClass("eu.kanade.tachiyomi.animesource.model.SAnime")
             val sAnimeInstance = sAnimeClass?.getMethod("create")?.invoke(null)
@@ -131,12 +115,12 @@ class AniyomiApiBridge(
                 episodeList.add(episode)
             }
 
-            val currentType = if (isNsfwExtension) TvType.NSFW else TvType.Anime
-
-            newAnimeLoadResponse(title, url, currentType) {
+            newAnimeLoadResponse(title, url, TvType.Anime) {
                 this.posterUrl = posterUrl
                 this.plot = description
-                addEpisodes(currentType, episodeList.reversed())
+                this.episodes = HashMap<TvType, List<Episode>>().apply {
+                    put(TvType.Anime, episodeList.reversed())
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -150,6 +134,7 @@ class AniyomiApiBridge(
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        if (instance == null) return false
         try {
             val sEpisodeClass = instance.javaClass.classLoader?.loadClass("eu.kanade.tachiyomi.animesource.model.SEpisode")
             val sEpisodeInstance = sEpisodeClass?.getMethod("create")?.invoke(null)
@@ -172,7 +157,6 @@ class AniyomiApiBridge(
                     ?: continue
 
                 val qualityStr = try { video.javaClass.getMethod("getQuality").invoke(video) as? String } catch (e: Exception) { "720p" }
-                val isM3u8 = videoUrl.contains(".m3u8")
 
                 val link = ExtractorLink(
                     source = name,
@@ -180,7 +164,7 @@ class AniyomiApiBridge(
                     url = videoUrl,
                     referer = mainUrl,
                     quality = CloudStreamQualities.Unknown.value,
-                    isM3u8 = isM3u8
+                    isM3u8 = videoUrl.contains(".m3u8")
                 )
 
                 callback(link)
