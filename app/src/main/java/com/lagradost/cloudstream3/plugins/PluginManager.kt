@@ -215,7 +215,7 @@ object PluginManager {
 
             val apiBridge = AniyomiApiBridge(file, mainClass, apkLoader)
 
-            APIHolder.apis.add(apiBridge)
+            APIHolder.allProviders.add(apiBridge)
             Log.i(TAG, "Sucesso ao carregar extensão Aniyomi: ${apiBridge.name} ($mainClass)")
             true
         } catch (e: Throwable) {
