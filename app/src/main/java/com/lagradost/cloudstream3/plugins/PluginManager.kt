@@ -860,19 +860,7 @@ object PluginManager {
     }
 
     suspend fun loadAniyomiRepository(context: Context, repoUrl: String) {
-        try {
-            val extensions = AniyomiRepoParser.fetchAniyomiRepository(repoUrl)
-            val cleanBaseUrl = repoUrl.removeSuffix("index.json").trimEnd('/')
-
-            for (ext in extensions) {
-                val apkFile = AniyomiRepoParser.downloadExtensionApk(context, cleanBaseUrl, ext.apk)
-                if (apkFile != null && apkFile.exists()) {
-                    loadAniyomiPlugin(context, apkFile)
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        Log.w(TAG, "Download de repositório Aniyomi desativado por enquanto.")
     }
 }
 
