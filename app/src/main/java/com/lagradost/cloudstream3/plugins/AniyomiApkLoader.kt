@@ -1,47 +1,49 @@
 package com.lagradost.cloudstream3.plugins
 
 import android.content.Context
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import kotlinx.serialization.Serializable
+import android.util.Log
+import dalvik.system.PathClassLoader
 import java.io.File
+import java.util.zip.ZipFile
+import org.json.JSONObject
 
-@Serializable
-data class AniyomiExtensionData(
-    @JsonProperty("name") val name: String,
-    @JsonProperty("pkg") val pkg: String,
-    @JsonProperty("apk") val apk: String,
-    @JsonProperty("lang") val lang: String? = "all",
-    @JsonProperty("code") val code: Int = 1,
-    @JsonProperty("version") val version: String? = "1.0",
-    @JsonProperty("class") val mainClass: String? = null
-)
+class AniyomiApkLoader(private val context: Context) {
 
-object AniyomiRepoParser {
+    private val classLoaderCache = mutableMapOf<String, PathClassLoader>()
 
-    suspend fun fetchAniyomiRepository(repoUrl: String): List<AniyomiExtensionData> {
-        return try {
-            val cleanUrl = if (repoUrl.endsWith("index.json")) repoUrl else "$repoUrl/index.json"
-            val responseText = app.get(cleanUrl).text
-            parseJson<List<AniyomiExtensionData>>(responseText)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+    fun getClassLoader(apkFile: File): PathClassLoader {
+        val path = apkFile.absolutePath
+        return classLoaderCache.getOrPut(path) {
+            val optimizedDir = context.codeCacheDir
+            PathClassLoader(path, optimizedDir.absolutePath, null, context.classLoader)
         }
     }
 
-    suspend fun downloadExtensionApk(context: Context, baseUrl: String, apkFileName: String): File? {
+    fun getMainClassName(apkFile: File): String? {
         return try {
-            val cleanBase = baseUrl.trimEnd('/')
-            val fullUrl = "$cleanBase/$apkFileName"
-            val responseBytes = app.get(fullUrl).bytes
+            ZipFile(apkFile).use { zip ->
+                val entry = zip.getEntry("AndroidManifest.xml") ?: return null
+                zip.getInputStream(entry).use { inputStream ->
+                    val bytes = inputStream.readBytes()
+                    val xmlText = String(bytes, Charsets.UTF_8)
 
-            val cacheFile = File(context.codeCacheDir, apkFileName)
-            cacheFile.writeBytes(responseBytes)
-            cacheFile
+                    val classMatch = Regex("""eu\.kanade\.tachiyomi\.extension\.[a-zA-Z0-9_.]*""").find(xmlText)
+                    classMatch?.value
+                }
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("AniyomiApkLoader", "Erro ao extrair nome da classe do APK", e)
+            null
+        }
+    }
+
+    fun loadExtensionClass(apkFile: File, className: String): Any? {
+        return try {
+            val loader = getClassLoader(apkFile)
+            val clazz = loader.loadClass(className)
+            clazz.getDeclaredConstructor().newInstance()
+        } catch (e: Exception) {
+            Log.e("AniyomiApkLoader", "Erro ao instanciar classe da extensão: $className", e)
             null
         }
     }
