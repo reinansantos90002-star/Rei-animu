@@ -30,7 +30,8 @@ jobs:
       uses: gradle/actions/setup-gradle@v5
 
     - name: Run Gradle Build
-      run: ./gradlew assemblePrereleaseDebug androidSourcesJar makeJar
+      run: ./gradlew assemblePrereleaseDebug androidSourcesJar makeJar --stacktrace --info
+
 
     - name: Create pre-release
       uses: marvinpinto/action-automatic-releases@latest
