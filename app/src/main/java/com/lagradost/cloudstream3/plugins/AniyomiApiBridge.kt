@@ -24,7 +24,6 @@ class AniyomiApiBridge(
     private val instance: Any = loader.loadExtensionClass(apkFile, mainClassName)
         ?: throw IllegalStateException("Falha ao instanciar a classe da extensão: $mainClassName")
 
-    // Checa se a extensão do Aniyomi possui a flag NSFW/Adulto habilitada
     private val isNsfwExtension: Boolean = try {
         val method = instance.javaClass.methods.firstOrNull { it.name == "isNsfw" || it.name == "getIsNsfw" }
         (method?.invoke(instance) as? Boolean) ?: false
