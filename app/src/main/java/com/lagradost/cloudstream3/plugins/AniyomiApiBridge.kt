@@ -136,7 +136,7 @@ class AniyomiApiBridge(
             newAnimeLoadResponse(title, url, currentType) {
                 this.posterUrl = posterUrl
                 this.plot = description
-                this.episodes = episodeList.reversed()
+                addEpisodes(currentType, episodeList.reversed())
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -148,7 +148,7 @@ class AniyomiApiBridge(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
-        offsetCallback: (ExtractorLink) -> Unit
+        callback: (ExtractorLink) -> Unit
     ): Boolean {
         try {
             val sEpisodeClass = instance.javaClass.classLoader?.loadClass("eu.kanade.tachiyomi.animesource.model.SEpisode")
@@ -183,7 +183,7 @@ class AniyomiApiBridge(
                     isM3u8 = isM3u8
                 )
 
-                offsetCallback(link)
+                callback(link)
             }
             return true
         } catch (e: Exception) {
