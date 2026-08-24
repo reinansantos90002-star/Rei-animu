@@ -1,51 +1,62 @@
 package com.lagradost.cloudstream3.plugins
 
-import com.lagradost.cloudstream3.Episode
-import com.lagradost.cloudstream3.HomePageList
-import com.lagradost.cloudstream3.LoadResponse
-import com.lagradost.cloudstream3.MainAPI
-import com.lagradost.cloudstream3.MainPageRequest
-import com.lagradost.cloudstream3.SearchResponse
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.newAnimeLoadResponse
-import com.lagradost.cloudstream3.newAnimeSearchResponse
-import com.lagradost.cloudstream3.newEpisode
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.Qualities as CloudStreamQualities
+import android.content.Context
+import android.content.pm.PackageManager
+import android.util.Log
+import dalvik.system.DexClassLoader
 import java.io.File
 
-class AniyomiApiBridge(
-    private val apkFile: File,
-    private val mainClassName: String,
-    loader: AniyomiApkLoader
-) : MainAPI() {
+class AniyomiApkLoader(private val context: Context) {
 
-    private val instance: Any = loader.loadExtensionClass(apkFile, mainClassName)
-        ?: throw IllegalStateException("Falha ao instanciar a classe da extensão: $mainClassName")
+    private val TAG = "AniyomiApkLoader"
 
-    private val isNsfwExtension: Boolean = try {
-        val method = instance.javaClass.methods.firstOrNull { it.name == "isNsfw" || it.name == "getIsNsfw" }
-        (method?.invoke(instance) as? Boolean) ?: false
-    } catch (e: Exception) {
-        false
+    fun getMainClassName(apkFile: File): String? {
+        return try {
+            val packageManager = context.packageManager
+            val packageInfo = packageManager.getPackageArchiveInfo(
+                apkFile.absolutePath,
+                PackageManager.GET_META_DATA
+            ) ?: return null
+
+            val appInfo = packageInfo.applicationInfo ?: return null
+            appInfo.sourceDir = apkFile.absolutePath
+            appInfo.publicSourceDir = apkFile.absolutePath
+
+            val metaData = appInfo.metaData
+            if (metaData != null && metaData.containsKey("animeextension.class")) {
+                return metaData.getString("animeextension.class")
+            }
+
+            packageInfo.services?.firstOrNull()?.name
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao extrair a classe principal do APK: ${apkFile.name}", e)
+            null
+        }
     }
 
-    override var name: String = try {
-        (instance.javaClass.getMethod("getName").invoke(instance) as? String) ?: "Aniyomi Extension"
-    } catch (e: Exception) {
-        "Aniyomi Extension"
+    fun loadExtensionClass(apkFile: File, className: String): Any? {
+        return try {
+            val optimizedDir = context.codeCacheDir
+            val classLoader = DexClassLoader(
+                apkFile.absolutePath,
+                optimizedDir.absolutePath,
+                null,
+                context.classLoader
+            )
+
+            val loadedClass = classLoader.loadClass(className)
+
+            try {
+                val constructor = loadedClass.getConstructor(Context::class.java)
+                constructor.newInstance(context)
+            } catch (e: NoSuchMethodException) {
+                val defaultConstructor = loadedClass.getDeclaredConstructor()
+                defaultConstructor.isAccessible = true
+                defaultConstructor.newInstance()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao instanciar $className do arquivo ${apkFile.name}", e)
+            null
+        }
     }
-
-    override var mainUrl: String = try {
-        val url = instance.javaClass.methods.firstOrNull { it.name == "getBasesUrl" || it.name == "baseUrl" }?.invoke(instance) as? String
-        url ?: "https://aniyomi.org"
-    } catch (e: Exception) {
-        "https://aniyomi.org"
-    }
-
-    override var supportedTypes = if (isNsfwExtension) setOf(TvType.NSFW) else setOf(TvType.Anime)
-    override var hasMainPage = true
-
-    // ... Mantenha o restante das 196 linhas (getMainPage, search, load, loadLinks) exatamente como estavam ...
 }
