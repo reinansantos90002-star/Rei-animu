@@ -20,6 +20,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.fragment.app.FragmentActivity
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.APIHolder
+import com.lagradost.cloudstream3.APIHolder.addPluginMapping
 import com.lagradost.cloudstream3.APIHolder.removePluginMapping
 import com.lagradost.cloudstream3.AllLanguagesName
 import com.lagradost.cloudstream3.AutoDownloadMode
@@ -215,7 +216,7 @@ object PluginManager {
 
             val apiBridge = AniyomiApiBridge(file, mainClass, apkLoader)
 
-            APIHolder.allProviders.add(apiBridge)
+            addPluginMapping(apiBridge)
             Log.i(TAG, "Sucesso ao carregar extensão Aniyomi: ${apiBridge.name} ($mainClass)")
             true
         } catch (e: Throwable) {
