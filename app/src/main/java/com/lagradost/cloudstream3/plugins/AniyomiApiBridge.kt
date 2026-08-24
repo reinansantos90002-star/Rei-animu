@@ -118,9 +118,7 @@ class AniyomiApiBridge(
             newAnimeLoadResponse(title, url, TvType.Anime) {
                 this.posterUrl = posterUrl
                 this.plot = description
-                this.episodes = HashMap<TvType, List<Episode>>().apply {
-                    put(TvType.Anime, episodeList.reversed())
-                }
+                this.addEpisodes(TvType.Anime, episodeList.reversed())
             }
         } catch (e: Exception) {
             e.printStackTrace()
