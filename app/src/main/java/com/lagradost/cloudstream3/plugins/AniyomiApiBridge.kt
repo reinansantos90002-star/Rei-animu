@@ -12,7 +12,8 @@ import com.lagradost.cloudstream3.newAnimeLoadResponse
 import com.lagradost.cloudstream3.newAnimeSearchResponse
 import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.Qualities as CloudStreamQualities
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.INFER_TYPE
 import java.io.File
 
 class AniyomiApiBridge(
@@ -161,8 +162,8 @@ class AniyomiApiBridge(
                     name = "$name - $qualityStr",
                     url = videoUrl,
                     referer = mainUrl,
-                    quality = CloudStreamQualities.Unknown.value,
-                    isM3u8 = videoUrl.contains(".m3u8")
+                    quality = Qualities.Unknown.value,
+                    type = INFER_TYPE
                 )
 
                 callback(link)
