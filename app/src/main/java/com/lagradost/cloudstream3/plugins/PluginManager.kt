@@ -66,7 +66,6 @@ import kotlinx.serialization.Serializable
 import java.io.File
 import java.io.InputStreamReader
 
-// Different keys for local and not since local can be removed at any time without app knowing, hence the local are getting rebuilt on every app start
 const val PLUGINS_KEY = "PLUGINS_KEY"
 const val PLUGINS_KEY_LOCAL = "PLUGINS_KEY_LOCAL"
 
@@ -74,7 +73,6 @@ const val EXTENSIONS_CHANNEL_ID = "cloudstream3.extensions"
 const val EXTENSIONS_CHANNEL_NAME = "Extensions"
 const val EXTENSIONS_CHANNEL_DESCRIPT = "Extension notification channel"
 
-// Data class for internal storage
 @Serializable
 data class PluginData(
     @JsonProperty("internalName") @SerialName("internalName") val internalName: String,
@@ -207,9 +205,6 @@ object PluginManager {
         }
     }
 
-    /**
-     * Carrega extensões no formato .apk (Aniyomi) lendo a classe principal dinamicamente
-     */
     private fun loadAniyomiApkPlugin(context: Context, file: File) {
         try {
             Log.i(TAG, "Tentando carregar extensão Aniyomi APK: ${file.name}")
@@ -611,9 +606,7 @@ object PluginManager {
             removePluginMapping(it)
         }
 
-        APIHolder.allProviders.withLock {
-            APIHolder.allProviders.removeAll { provider -> provider.sourcePlugin == plugin.filename }
-        }
+        APIHolder.allProviders.removeIf { provider -> provider.sourcePlugin == plugin.filename }
 
         extractorApis.withLock {
             extractorApis.removeAll { provider -> provider.sourcePlugin == plugin.filename }
@@ -851,9 +844,6 @@ object PluginManager {
         }
     }
 
-    /**
-     * Carrega um APK de extensão do Aniyomi diretamente a partir de um arquivo local
-     */
     fun loadAniyomiPlugin(context: Context, apkFile: File): Boolean {
         return try {
             val loader = AniyomiApkLoader(context)
@@ -861,8 +851,7 @@ object PluginManager {
 
             val apiBridge = AniyomiApiBridge(apkFile, mainClass, loader)
             
-            // Injeta a API convertida no registrador global do CloudStream
-            APIHolder.addPlugin(apiBridge)
+            APIHolder.allProviders.add(apiBridge)
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -870,9 +859,6 @@ object PluginManager {
         }
     }
 
-    /**
-     * Processa uma URL de repositório Aniyomi, baixa os APKs e os registra no app
-     */
     suspend fun loadAniyomiRepository(context: Context, repoUrl: String) {
         try {
             val extensions = AniyomiRepoParser.fetchAniyomiRepository(repoUrl)
