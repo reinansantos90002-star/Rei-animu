@@ -163,7 +163,8 @@ class AniyomiApiBridge(
                     url = videoUrl,
                     referer = mainUrl,
                     quality = Qualities.Unknown.value,
-                    type = INFER_TYPE
+                    type = INFER_TYPE,
+                    headers = mapOf()
                 )
 
                 callback(link)
