@@ -33,20 +33,19 @@ class AniyomiApiBridge(
     }
 
     override var name: String = try {
-        instance.javaClass.getMethod("getName").invoke(instance) as String
+        (instance.javaClass.getMethod("getName").invoke(instance) as? String) ?: "Aniyomi Extension"
     } catch (e: Exception) {
         "Aniyomi Extension"
     }
 
     override var mainUrl: String = try {
-        instance.javaClass.getMethod("getBasesUrl").invoke(instance) as? String 
-            ?: instance.javaClass.getMethod("baseUrl").invoke(instance) as String
+        val url = instance.javaClass.methods.firstOrNull { it.name == "getBasesUrl" || it.name == "baseUrl" }?.invoke(instance) as? String
+        url ?: "https://aniyomi.org"
     } catch (e: Exception) {
-        ""
+        "https://aniyomi.org"
     }
 
-    // Se for NSFW, categoriza como TvType.NSFW para o CloudStream aplicar os filtros
-    override val supportedTypes = if (isNsfwExtension) setOf(TvType.NSFW) else setOf(TvType.Anime)
+    override var supportedTypes = if (isNsfwExtension) setOf(TvType.NSFW) else setOf(TvType.Anime)
     override var hasMainPage = true
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageList? {
